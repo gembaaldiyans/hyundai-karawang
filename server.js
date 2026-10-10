@@ -1,0 +1,13 @@
+const express=require("express"),fs=require("fs"),path=require("path"),crypto=require("crypto");
+const app=express(),PORT=process.env.PORT||3000,ADMIN_PASSWORD=process.env.ADMIN_PASSWORD||"GantiPasswordIni123!",FILE=path.join(process.env.DATA_DIR||__dirname+"/data","leads.json"),sessions=new Set();
+fs.mkdirSync(path.dirname(FILE),{recursive:true});if(!fs.existsSync(FILE))fs.writeFileSync(FILE,"[]");
+app.use(express.json());app.use(express.static(path.join(__dirname,"public")));
+const read=()=>{try{return JSON.parse(fs.readFileSync(FILE))}catch{return []}},write=x=>fs.writeFileSync(FILE,JSON.stringify(x,null,2));
+const auth=(q,s,n)=>sessions.has((q.headers.authorization||"").replace("Bearer ",""))?n():s.status(401).json({error:"Login admin diperlukan"});
+app.get("/api/health",(q,s)=>s.json({ok:true}));
+app.post("/api/leads",(q,s)=>{let d=q.body||{};if(!d.name||!d.phone||!d.model||!d.need)return s.status(400).json({error:"Lengkapi data wajib."});let a=read(),x={id:crypto.randomUUID(),name:String(d.name).slice(0,100),phone:String(d.phone).slice(0,30),model:String(d.model).slice(0,100),need:String(d.need).slice(0,100),message:String(d.message||"").slice(0,1000),status:"Baru",createdAt:new Date().toISOString()};a.unshift(x);write(a);s.status(201).json({ok:true,id:x.id})});
+app.post("/api/admin/login",(q,s)=>{if((q.body||{}).password!==ADMIN_PASSWORD)return s.status(401).json({error:"Password salah"});let t=crypto.randomBytes(32).toString("hex");sessions.add(t);s.json({token:t})});
+app.get("/api/admin/leads",auth,(q,s)=>s.json(read()));
+app.patch("/api/admin/leads/:id",auth,(q,s)=>{let a=read(),x=a.find(v=>v.id===q.params.id),st=(q.body||{}).status;if(!x)return s.status(404).json({error:"Tidak ditemukan"});if(!["Baru","Dihubungi","Follow-up","Deal","Tidak lanjut"].includes(st))return s.status(400).json({error:"Status tidak valid"});x.status=st;write(a);s.json({ok:true})});
+app.get("*",(q,s)=>s.sendFile(path.join(__dirname,"public/index.html")));
+app.listen(PORT,()=>console.log("Running on "+PORT));
